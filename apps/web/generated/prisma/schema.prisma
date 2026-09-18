@@ -1,0 +1,360 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+generator web_client {
+  provider = "prisma-client-js"
+  output   = "../../web/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  OWNER
+  MANAGER
+  CASHIER
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+enum MovementType {
+  PURCHASE
+  SALE
+  ADJUSTMENT
+  RETURN
+  WASTAGE
+  STOCK_SYNC
+}
+
+enum UploadType {
+  PRODUCT_IMPORT
+  RESTOCK
+}
+
+enum UploadMode {
+  CLOSING_SYNC
+  ADD_QUANTITY
+}
+
+enum UploadStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  COMPLETED_WITH_ERRORS
+  FAILED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  UPI
+  OTHER
+}
+
+enum BillStatus {
+  COMPLETED
+  VOID
+}
+
+enum AlertType {
+  LOW_STOCK
+  OUT_OF_STOCK
+}
+
+enum AlertStatus {
+  ACTIVE
+  RESOLVED
+  DISMISSED
+}
+
+model Tenant {
+  id                  String             @id @default(uuid()) @db.Uuid
+  name                String
+  slug                String             @unique
+  address             String?
+  phone               String?
+  gstin               String?
+  state_code          String?
+  currency            String             @default("INR")
+  timezone            String             @default("Asia/Kolkata")
+  subscription_status SubscriptionStatus @default(TRIALING)
+  trial_ends_at       DateTime?
+  plan_id             String?            @db.Uuid
+  stripe_customer_id  String?
+  saved_mappings      Json?
+  created_at          DateTime           @default(now())
+  updated_at          DateTime           @updatedAt
+
+  plan                Plan?               @relation(fields: [plan_id], references: [id])
+  bill_counter        BillCounter?
+  users               User[]
+  products            Product[]
+  stock_movements     StockMovement[]
+  upload_batches      UploadBatch[]
+  bills               Bill[]
+  alerts              Alert[]
+  daily_sales_summary DailySalesSummary[]
+  audit_logs          AuditLog[]
+  subscriptions       Subscription[]
+
+  @@map("tenants")
+}
+
+model Plan {
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String
+  price_monthly Decimal  @db.Decimal(10, 2)
+  price_yearly  Decimal  @db.Decimal(10, 2)
+  limits        Json
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  tenants       Tenant[]
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id                     String             @id @default(uuid()) @db.Uuid
+  tenant_id              String             @db.Uuid
+  plan_id                String             @db.Uuid
+  stripe_subscription_id String?            @unique
+  status                 SubscriptionStatus @default(TRIALING)
+  current_period_start   DateTime?
+  current_period_end     DateTime?
+  created_at             DateTime           @default(now())
+  updated_at             DateTime           @updatedAt
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  plan   Plan   @relation(fields: [plan_id], references: [id], onDelete: Restrict)
+
+  @@index([tenant_id])
+  @@index([tenant_id, status])
+  @@map("subscriptions")
+}
+
+model User {
+  id                     String    @id @default(uuid()) @db.Uuid
+  tenant_id              String    @db.Uuid
+  email                  String    @unique
+  password_hash          String
+  name                   String
+  role                   UserRole
+  is_active              Boolean   @default(true)
+  failed_login_count     Int       @default(0)
+  locked_until           DateTime?
+  reset_token_hash       String?
+  reset_token_expires_at DateTime?
+  last_login_at          DateTime?
+  created_at             DateTime  @default(now())
+  updated_at             DateTime  @updatedAt
+
+  tenant     Tenant     @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  audit_logs AuditLog[]
+
+  @@index([tenant_id, role])
+  @@map("users")
+}
+
+model Product {
+  id                  String   @id @default(uuid()) @db.Uuid
+  tenant_id           String   @db.Uuid
+  sku                 String
+  barcode             String?
+  name                String
+  category            String?
+  hsn_code            String?
+  unit                String?
+  pack_size           String?
+  mrp                 Decimal  @db.Decimal(10, 2)
+  price               Decimal  @db.Decimal(10, 2)
+  cost_price          Decimal? @db.Decimal(10, 2)
+  quantity_in_stock   Int      @default(0)
+  low_stock_threshold Int      @default(10)
+  gst_rate            Decimal  @default(18.00) @db.Decimal(5, 2)
+  is_active           Boolean  @default(true)
+  image_url           String?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  tenant              Tenant              @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  stock_movements     StockMovement[]
+  alerts              Alert[]
+  daily_sales_summary DailySalesSummary[]
+  bill_items          BillItem[]
+
+  @@unique([tenant_id, sku])
+  @@unique([tenant_id, barcode])
+  @@index([tenant_id, barcode])
+  @@index([tenant_id, sku])
+  @@index([tenant_id, category])
+  @@map("products")
+}
+
+model StockMovement {
+  id              String       @id @default(uuid()) @db.Uuid
+  tenant_id       String       @db.Uuid
+  product_id      String       @db.Uuid
+  movement_type   MovementType
+  quantity_change Int
+  quantity_after  Int
+  reference_type  String?
+  reference_id    String?
+  note            String?
+  created_by      String?      @db.Uuid
+  created_at      DateTime     @default(now())
+
+  tenant  Tenant  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [product_id], references: [id], onDelete: Restrict)
+
+  @@index([tenant_id, product_id, created_at])
+  @@map("stock_movements")
+}
+
+model UploadBatch {
+  id           String       @id @default(uuid()) @db.Uuid
+  tenant_id    String       @db.Uuid
+  type         UploadType
+  mode         UploadMode?
+  filename     String
+  file_url     String?
+  status       UploadStatus @default(PENDING)
+  total_rows   Int          @default(0)
+  success_rows Int          @default(0)
+  failed_rows  Int          @default(0)
+  error_report Json?
+  created_by   String?      @db.Uuid
+  created_at   DateTime     @default(now())
+  updated_at   DateTime     @updatedAt
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id, created_at])
+  @@map("upload_batches")
+}
+
+model Bill {
+  id              String        @id @default(uuid()) @db.Uuid
+  tenant_id       String        @db.Uuid
+  bill_number     String
+  subtotal        Decimal       @db.Decimal(12, 2)
+  discount_amount Decimal       @default(0.00) @db.Decimal(12, 2)
+  cgst_amount     Decimal       @default(0.00) @db.Decimal(12, 2)
+  sgst_amount     Decimal       @default(0.00) @db.Decimal(12, 2)
+  igst_amount     Decimal       @default(0.00) @db.Decimal(12, 2)
+  round_off       Decimal       @default(0.00) @db.Decimal(5, 2)
+  total           Decimal       @db.Decimal(12, 2)
+  payment_method  PaymentMethod
+  status          BillStatus    @default(COMPLETED)
+  idempotency_key String        @unique
+  created_by      String?       @db.Uuid
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+
+  tenant Tenant     @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  items  BillItem[]
+
+  @@unique([tenant_id, bill_number])
+  @@index([tenant_id, created_at])
+  @@map("bills")
+}
+
+model BillItem {
+  id           String   @id @default(uuid()) @db.Uuid
+  bill_id      String   @db.Uuid
+  product_id   String?  @db.Uuid
+  product_name String
+  sku          String
+  hsn_code     String?
+  mrp          Decimal  @db.Decimal(10, 2)
+  quantity     Int
+  unit_price   Decimal  @db.Decimal(10, 2)
+  gst_rate     Decimal  @db.Decimal(5, 2)
+  cgst_amount  Decimal  @default(0.00) @db.Decimal(12, 2)
+  sgst_amount  Decimal  @default(0.00) @db.Decimal(12, 2)
+  line_total   Decimal  @db.Decimal(12, 2)
+  created_at   DateTime @default(now())
+
+  bill    Bill     @relation(fields: [bill_id], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [product_id], references: [id], onDelete: SetNull)
+
+  @@index([bill_id])
+  @@index([product_id])
+  @@map("bill_items")
+}
+
+model BillCounter {
+  tenant_id   String   @id @db.Uuid
+  last_number Int      @default(0)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  @@map("bill_counters")
+}
+
+model Alert {
+  id           String      @id @default(uuid()) @db.Uuid
+  tenant_id    String      @db.Uuid
+  product_id   String      @db.Uuid
+  type         AlertType
+  status       AlertStatus @default(ACTIVE)
+  triggered_at DateTime    @default(now())
+  resolved_at  DateTime?
+  created_at   DateTime    @default(now())
+  updated_at   DateTime    @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [product_id], references: [id], onDelete: Restrict)
+
+  @@index([tenant_id, status])
+  @@map("alerts")
+}
+
+model DailySalesSummary {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenant_id  String   @db.Uuid
+  date       DateTime @db.Date
+  product_id String   @db.Uuid
+  units_sold Int      @default(0)
+  revenue    Decimal  @default(0.00) @db.Decimal(12, 2)
+  cost       Decimal  @default(0.00) @db.Decimal(12, 2)
+  profit     Decimal  @default(0.00) @db.Decimal(12, 2)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [product_id], references: [id], onDelete: Restrict)
+
+  @@unique([tenant_id, date, product_id])
+  @@index([tenant_id, date])
+  @@map("daily_sales_summary")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenant_id   String   @db.Uuid
+  user_id     String?  @db.Uuid
+  action      String
+  entity_type String
+  entity_id   String?
+  metadata    Json?
+  created_at  DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [user_id], references: [id], onDelete: SetNull)
+
+  @@index([tenant_id, created_at])
+  @@map("audit_logs")
+}
