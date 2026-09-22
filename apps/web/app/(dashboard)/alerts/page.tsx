@@ -37,7 +37,7 @@ export default function AlertsPage() {
   }, []);
 
   return (
-    <main className="page-content inventory-page">
+    <div className="page-content inventory-page">
       <div className="page-heading">
         <div>
           <p className="eyebrow">Operational</p>
@@ -83,6 +83,6 @@ export default function AlertsPage() {
           </table>
         </div>
       </section>
-    </main>
+    </div>
   );
 }

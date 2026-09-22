@@ -6,7 +6,6 @@ import { prisma } from '@/lib/prisma';
 
 const defaultPlans = [
   {
-    id: 'starter-plan',
     name: 'Starter',
     price_monthly: 999,
     price_yearly: 9990,
@@ -18,7 +17,6 @@ const defaultPlans = [
     },
   },
   {
-    id: 'growth-plan',
     name: 'Growth',
     price_monthly: 2499,
     price_yearly: 24990,
@@ -30,7 +28,6 @@ const defaultPlans = [
     },
   },
   {
-    id: 'scale-plan',
     name: 'Scale',
     price_monthly: 4999,
     price_yearly: 49990,
@@ -64,22 +61,17 @@ export async function GET() {
       let plans = await tx.plan.findMany({ orderBy: { price_monthly: 'asc' } });
       if (plans.length === 0) {
         for (const plan of defaultPlans) {
-          await tx.plan.upsert({
-            where: { id: plan.id },
-            create: {
-              id: plan.id,
-              name: plan.name,
-              price_monthly: plan.price_monthly,
-              price_yearly: plan.price_yearly,
-              limits: plan.limits,
-            },
-            update: {
-              name: plan.name,
-              price_monthly: plan.price_monthly,
-              price_yearly: plan.price_yearly,
-              limits: plan.limits,
-            },
-          });
+          const existing = await tx.plan.findFirst({ where: { name: plan.name } });
+          if (existing) {
+            await tx.plan.update({
+              where: { id: existing.id },
+              data: { price_monthly: plan.price_monthly, price_yearly: plan.price_yearly, limits: plan.limits },
+            });
+          } else {
+            await tx.plan.create({
+              data: { name: plan.name, price_monthly: plan.price_monthly, price_yearly: plan.price_yearly, limits: plan.limits },
+            });
+          }
         }
         plans = await tx.plan.findMany({ orderBy: { price_monthly: 'asc' } });
       }
@@ -119,70 +111,6 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
-  const session = await readSession();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  try {
-    const body = await request.json();
-    const planId = String(body.planId ?? '').trim();
-    if (!planId) {
-      return NextResponse.json({ error: 'Plan is required' }, { status: 400 });
-    }
-
-    const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      await tx.$executeRaw`SELECT set_config('app.tenant_id', ${session.tenantId}, true)`;
-
-      const plan = await tx.plan.findUnique({ where: { id: planId } });
-      if (!plan) {
-        throw new Error('PLAN_NOT_FOUND');
-      }
-
-      const tenant = await tx.tenant.update({
-        where: { id: session.tenantId },
-        data: {
-          plan_id: plan.id,
-          subscription_status: 'ACTIVE',
-        },
-        select: { id: true, plan_id: true, subscription_status: true },
-      });
-
-      const existing = await tx.subscription.findFirst({
-        where: { tenant_id: session.tenantId },
-        orderBy: { created_at: 'desc' },
-      });
-
-      if (existing) {
-        await tx.subscription.update({
-          where: { id: existing.id },
-          data: {
-            plan_id: plan.id,
-            status: 'ACTIVE',
-            current_period_start: new Date(),
-            current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          },
-        });
-      } else {
-        await tx.subscription.create({
-          data: {
-            tenant_id: session.tenantId,
-            plan_id: plan.id,
-            status: 'ACTIVE',
-            current_period_start: new Date(),
-            current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          },
-        });
-      }
-
-      return { tenant, plan: normalizePlan(plan) };
-    });
-
-    return NextResponse.json({ success: true, ...result });
-  } catch (error) {
-    if (error instanceof Error && error.message === 'PLAN_NOT_FOUND') {
-      return NextResponse.json({ error: 'Plan not found' }, { status: 404 });
-    }
-    console.error(error);
-    return NextResponse.json({ error: 'Unable to update subscription' }, { status: 500 });
-  }
-}
+// Plan changes now go through POST /api/billing/checkout (create a Razorpay
+// order) followed by POST /api/billing/verify (activate after payment) —
+// see those routes. This endpoint stays read-only.

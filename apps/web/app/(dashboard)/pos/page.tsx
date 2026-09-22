@@ -13,6 +13,30 @@ type Product = {
 };
 type CartItem = Product & { quantity: number };
 
+type BillItem = {
+  id: string;
+  product_name: string;
+  sku: string;
+  quantity: number;
+  unit_price: string;
+  gst_rate: string;
+  line_total: string;
+};
+type Bill = {
+  id: string;
+  bill_number: string;
+  subtotal: string;
+  discount_amount: string;
+  cgst_amount: string;
+  sgst_amount: string;
+  total: string;
+  payment_method: string;
+  created_at: string;
+  items: BillItem[];
+};
+
+const currency = (value: number) => `₹${value.toFixed(2)}`;
+
 export default function PosPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -21,6 +45,7 @@ export default function PosPage() {
   const [paymentMethod, setPaymentMethod] = useState('CASH');
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [lastBill, setLastBill] = useState<Bill | null>(null);
 
   useEffect(() => {
     fetch('/api/products').then(async (response) => {
@@ -100,10 +125,11 @@ export default function PosPage() {
       return item ? { ...product, quantity_in_stock: product.quantity_in_stock - item.quantity } : product;
     }));
     setCart([]);
+    setLastBill(data.bill);
   }
 
   return (
-    <main className="pos-page">
+    <div className="pos-page">
       <header className="pos-header">
         <div><p className="eyebrow">Point of sale</p><h1>New sale<span>.</span></h1></div>
         <a className="text-button" href="/">← Back to overview</a>
@@ -141,6 +167,44 @@ export default function PosPage() {
           <div className="cart-summary"><div><span>Subtotal</span><b>₹{subtotal.toFixed(2)}</b></div><div><span>GST</span><b>₹{tax.toFixed(2)}</b></div><div className="cart-total"><span>Total</span><strong>₹{total.toFixed(2)}</strong></div><label>Payment method<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="CASH">Cash</option><option value="CARD">Card</option><option value="UPI">UPI</option><option value="OTHER">Other</option></select></label>{message && <p className={message.includes('completed') ? 'form-success' : 'form-error'}>{message}</p>}<button className="primary-button checkout-button" disabled={!cart.length || submitting} onClick={() => void checkout()}>{submitting ? 'Processing...' : 'Complete sale'}<span>→</span></button></div>
         </aside>
       </div>
-    </main>
+
+      {lastBill && (
+        <div className="modal-backdrop receipt-backdrop" role="presentation">
+          <div className="receipt-card">
+            <div className="receipt-print">
+              <div className="receipt-store">
+                <strong>Arun Ice Cream &amp; Dairy Products</strong>
+                <small>Tax Invoice</small>
+              </div>
+              <div className="receipt-meta">
+                <div><span>Invoice</span><b>{lastBill.bill_number}</b></div>
+                <div><span>Date</span><b>{new Date(lastBill.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</b></div>
+                <div><span>Payment</span><b>{lastBill.payment_method}</b></div>
+              </div>
+              <div className="receipt-items">
+                {lastBill.items.map((item) => (
+                  <div className="receipt-line" key={item.id}>
+                    <span>{item.product_name} × {item.quantity}</span>
+                    <b>{currency(Number(item.line_total))}</b>
+                  </div>
+                ))}
+              </div>
+              <div className="receipt-totals">
+                <div className="receipt-line"><span>Subtotal</span><b>{currency(Number(lastBill.subtotal))}</b></div>
+                {Number(lastBill.discount_amount) > 0 && <div className="receipt-line"><span>Discount</span><b>-{currency(Number(lastBill.discount_amount))}</b></div>}
+                <div className="receipt-line"><span>CGST</span><b>{currency(Number(lastBill.cgst_amount))}</b></div>
+                <div className="receipt-line"><span>SGST</span><b>{currency(Number(lastBill.sgst_amount))}</b></div>
+                <div className="receipt-line receipt-grand-total"><span>Total</span><b>{currency(Number(lastBill.total))}</b></div>
+              </div>
+              <p className="receipt-footer">Thank you for shopping with us!</p>
+            </div>
+            <div className="receipt-actions no-print">
+              <button className="primary-button" type="button" onClick={() => window.print()}>Print receipt</button>
+              <button className="text-button" type="button" onClick={() => setLastBill(null)}>Start new sale</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

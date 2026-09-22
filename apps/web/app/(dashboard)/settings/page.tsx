@@ -78,7 +78,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <main className="page-content inventory-page">
+    <div className="page-content inventory-page">
       <div className="page-heading">
         <div>
           <p className="eyebrow">Workspace</p>
@@ -151,6 +151,6 @@ export default function SettingsPage() {
           </table>
         </div>
       </section>
-    </main>
+    </div>
   );
 }

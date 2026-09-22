@@ -42,7 +42,7 @@ export default function SalesPage() {
   }, []);
 
   return (
-    <main className="page-content inventory-page">
+    <div className="page-content inventory-page">
       <div className="page-heading">
         <div>
           <p className="eyebrow">Transactions</p>
@@ -89,6 +89,6 @@ export default function SalesPage() {
           </table>
         </div>
       </section>
-    </main>
+    </div>
   );
 }

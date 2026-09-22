@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 
-const SESSION_COOKIE = 'scoopstock_session';
+const SESSION_COOKIE = 'arundairy_session';
 
 async function hasValidSession(request: NextRequest) {
   const token = request.cookies.get(SESSION_COOKIE)?.value;
@@ -18,11 +18,12 @@ async function hasValidSession(request: NextRequest) {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const isAuthPage = pathname === '/login' || pathname === '/signup';
+  const isAuthPage = pathname === '/login' || pathname === '/signup' || pathname === '/forgot-password' || pathname === '/reset-password';
   const isAuthApi = pathname.startsWith('/api/auth/');
+  const isWebhook = pathname === '/api/billing/webhook';
   const authenticated = await hasValidSession(request);
 
-  if (isAuthApi) return NextResponse.next();
+  if (isAuthApi || isWebhook) return NextResponse.next();
   if (isAuthPage && authenticated) return NextResponse.redirect(new URL('/', request.url));
   if (isAuthPage) return NextResponse.next();
   if (authenticated) return NextResponse.next();

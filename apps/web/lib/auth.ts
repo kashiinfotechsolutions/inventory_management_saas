@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { SignJWT, jwtVerify } from 'jose';
 
-export const SESSION_COOKIE = 'scoopstock_session';
+export const SESSION_COOKIE = 'arundairy_session';
 
 export type SessionUser = {
   sub: string;

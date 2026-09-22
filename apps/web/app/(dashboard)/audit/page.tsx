@@ -35,7 +35,7 @@ export default function AuditPage() {
   }, []);
 
   return (
-    <main className="page-content inventory-page">
+    <div className="page-content inventory-page">
       <div className="page-heading">
         <div>
           <p className="eyebrow">Security</p>
@@ -77,6 +77,6 @@ export default function AuditPage() {
           </table>
         </div>
       </section>
-    </main>
+    </div>
   );
 }

@@ -5,8 +5,14 @@ import { Prisma } from '@prisma/client';
 
 import { createSession, sessionCookie } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { checkRateLimit, clientIp } from '@/lib/rate-limit';
 
 export async function POST(request: Request) {
+  const { limited } = await checkRateLimit(`signup:${clientIp(request)}`, 10, 15 * 60);
+  if (limited) {
+    return NextResponse.json({ error: 'Too many signup attempts. Please try again later.' }, { status: 429 });
+  }
+
   try {
     const body = await request.json();
     const name = String(body.name ?? '').trim();

@@ -36,6 +36,31 @@ export default function UsersPage() {
     }
   }
 
+  const [actionError, setActionError] = useState('');
+  const [pendingId, setPendingId] = useState<string | null>(null);
+
+  async function updateUser(id: string, body: Record<string, unknown>) {
+    setActionError('');
+    setPendingId(id);
+    try {
+      const response = await fetch('/api/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ...body }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setActionError(data.error ?? 'Unable to update team member');
+        return;
+      }
+      await loadUsers();
+    } catch {
+      setActionError('Unable to update team member');
+    } finally {
+      setPendingId(null);
+    }
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
@@ -64,7 +89,7 @@ export default function UsersPage() {
   }
 
   return (
-    <main className="page-content inventory-page">
+    <div className="page-content inventory-page">
       <div className="page-heading">
         <div>
           <p className="eyebrow">People</p>
@@ -74,6 +99,7 @@ export default function UsersPage() {
       </div>
 
       {error && <div className="form-error inventory-error">{error}</div>}
+      {actionError && <div className="form-error inventory-error">{actionError}</div>}
 
       <section className="panel inventory-table-panel" style={{ marginBottom: 20 }}>
         <div className="panel-heading">
@@ -133,22 +159,43 @@ export default function UsersPage() {
                 <th>Role</th>
                 <th>Status</th>
                 <th>Last login</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {users.length === 0 ? <tr><td className="empty-cell" colSpan={5}>No team members have been added yet.</td></tr> : users.map((user) => (
+              {users.length === 0 ? <tr><td className="empty-cell" colSpan={6}>No team members have been added yet.</td></tr> : users.map((user) => (
                 <tr key={user.id}>
                   <td><strong>{user.name}</strong></td>
                   <td>{user.email}</td>
-                  <td><span className="payment-pill">{user.role}</span></td>
+                  <td>
+                    <select
+                      value={user.role}
+                      disabled={pendingId === user.id}
+                      onChange={(event) => updateUser(user.id, { role: event.target.value })}
+                    >
+                      <option value="OWNER">Owner</option>
+                      <option value="MANAGER">Manager</option>
+                      <option value="CASHIER">Cashier</option>
+                    </select>
+                  </td>
                   <td><span className={`status ${user.is_active ? 'reorder' : 'critical'}`}>{user.is_active ? 'Active' : 'Inactive'}</span></td>
                   <td className="muted-cell">{user.last_login_at ? new Date(user.last_login_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</td>
+                  <td>
+                    <button
+                      className="text-button"
+                      type="button"
+                      disabled={pendingId === user.id}
+                      onClick={() => updateUser(user.id, { is_active: !user.is_active })}
+                    >
+                      {user.is_active ? 'Deactivate' : 'Activate'}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </section>
-    </main>
+    </div>
   );
 }
